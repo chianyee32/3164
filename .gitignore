@@ -1,0 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+
+# Uploads and outputs
+uploads_temp/
+uploads_prediction/
+user_preprocessed_output.csv
+predictions_output.csv
+
+# Model and scaler binaries
+*.h5
+*.pkl
