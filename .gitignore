@@ -13,7 +13,6 @@ user_preprocessed_output.csv
 predictions_output.csv
 Preprocess_files/
 
-
 # Model and scaler binaries
 *.h5
 *.pkl
