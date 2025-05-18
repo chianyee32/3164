@@ -16,3 +16,12 @@ Preprocess_files/
 # Model and scaler binaries
 *.h5
 *.pkl
+
+# Sample and test data (fetched or local testing only)
+Different_input_datasets/
+sample_dataset_for_user/
+test_file/
+
+# macOS cruft
+.DS_Store
+
