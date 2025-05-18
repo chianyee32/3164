@@ -1,89 +1,118 @@
+// File: web.js
+
+// ─── 1. Configuration ──────────────────────────────────────────────────────────
+
+// Always post back to the same origin
+const UPLOAD_ENDPOINT = `${window.location.origin}/upload_prediction`;
+
+// ─── 2. State ──────────────────────────────────────────────────────────────────
+
 let allRows = [];
 let currentSortColumn = null;
 let sortAscending = true;
 
-document.addEventListener("DOMContentLoaded", function () {
-  document.getElementById("file_upload_prediction").addEventListener("change", function (event) {
-    uploadFile(event, "file_info_prediction", "http://127.0.0.1:5000/upload_prediction");
-  });
+// ─── 3. DOM Ready ──────────────────────────────────────────────────────────────
 
-  document.getElementById("download_filtered").addEventListener("click", downloadFilteredData);
+document.addEventListener("DOMContentLoaded", () => {
+  // File input
+  const fileInput = document.getElementById("file_upload_prediction");
+  fileInput.addEventListener("change", event =>
+    uploadFile(event)
+  );
+
+  // Download filtered
+  document
+    .getElementById("download_filtered")
+    .addEventListener("click", downloadFilteredData);
 });
 
-function uploadFile(event, fileInfoId, uploadUrl) {
+// ─── 4. Upload & Preview ───────────────────────────────────────────────────────
+
+function uploadFile(event) {
   const file = event.target.files[0];
   if (!file || (!file.name.endsWith(".csv") && file.type !== "text/csv")) {
     alert("⚠️ Please upload a valid CSV file.");
     return;
   }
 
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const infoDiv = document.getElementById(fileInfoId);
-  const loadingDiv = document.getElementById("loading_indicator");
+  // show spinner + hide sections
+  const infoDiv       = document.getElementById("file_info_prediction");
+  const loadingDiv    = document.getElementById("loading_indicator");
   const uploadSection = document.getElementById("upload-section");
-  const tooltipBox = document.getElementById("tooltip-box");
-  const formatBtn = document.getElementById("format_btn");
-  const spinner = document.getElementById("spinner");
-  const preview = document.getElementById("csv_preview");
+  const tooltipBox    = document.getElementById("tooltip-box");
+  const formatBtn     = document.getElementById("format_btn");
+  const spinner       = document.getElementById("spinner");
+  const preview       = document.getElementById("csv_preview");
 
   uploadSection.style.display = "none";
-  tooltipBox.style.display = "none";
-  formatBtn.style.display = "none";
-  spinner.style.display = "block";
-  preview.innerHTML = "";
-  infoDiv.innerHTML = `📄 File Selected: <span style="color: teal;">${file.name}</span>`;
+  tooltipBox.style.display    = "none";
+  formatBtn.style.display     = "none";
+  spinner.style.display       = "block";
+  preview.innerHTML           = "";
 
+  infoDiv.innerHTML = `📄 File Selected: <span style="color: teal;">${file.name}</span>`;
   loadingDiv.innerHTML = `⏳ <span style="color: #9b59b6;">Processing your file, please wait...</span>`;
   loadingDiv.style.display = "block";
 
-  fetch(uploadUrl, { method: "POST", body: formData })
+  const formData = new FormData();
+  formData.append("file", file);
+
+  fetch(UPLOAD_ENDPOINT, { method: "POST", body: formData })
     .then(res => res.json())
     .then(data => {
-      spinner.style.display = "none";
+      // hide spinner
+      spinner.style.display    = "none";
       loadingDiv.style.display = "none";
 
       if (data.error) {
-        let errorMessage = `❌ Error: ${data.error}`;
-        if (data.details) {
-          errorMessage += `\n\n🔍 Details:\n${data.details}`;
-        }
-        infoDiv.innerText += "\n" + errorMessage;
+        // show error
+        let msg = `❌ Error: ${data.error}`;
+        if (data.details) msg += `\n🔍 Details:\n${data.details}`;
+        infoDiv.innerText += `\n${msg}`;
         uploadSection.style.display = "block";
         return;
       }
 
+      // success: add download link
       const link = document.createElement("a");
-      link.href = data.download_url;
+      link.href        = data.download_url;
       link.textContent = "⬇️ Download Prediction File";
-      link.target = "_blank";
-      link.style.cssText = "display:inline-block;margin-top:15px;background-color:#2ecc71;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;";
+      link.target      = "_blank";
+      link.style.cssText =
+        "display:inline-block;margin-top:15px;" +
+        "background-color:#2ecc71;color:white;" +
+        "padding:10px 20px;border-radius:8px;text-decoration:none;";
       infoDiv.appendChild(document.createElement("br"));
       infoDiv.appendChild(link);
 
-      fetch(data.download_url)
-        .then(res => res.text())
-        .then(csvText => {
-          displayCSV(csvText);
-          createCancerTypeCheckboxes(allRows);
-          document.getElementById("csv_preview").scrollIntoView({ behavior: "smooth" });
-        });
+      // fetch the CSV for preview
+      return fetch(data.download_url).then(r => r.text());
     })
-    .catch(err => {
-      spinner.style.display = "none";
+    .then(csvText => {
+      if (!csvText) return;
+      displayCSV(csvText);
+      createCancerTypeCheckboxes(allRows);
+      document.getElementById("csv_preview")
+              .scrollIntoView({ behavior: "smooth" });
+    })
+    .catch(() => {
+      // network / unexpected error
+      spinner.style.display    = "none";
       loadingDiv.style.display = "none";
-      infoDiv.innerText = "❌ Upload failed.";
+      infoDiv.innerText        = "❌ Upload failed.";
       uploadSection.style.display = "block";
     });
 }
 
+// ─── 5. CSV → Table ────────────────────────────────────────────────────────────
+
 function displayCSV(csvText) {
-  allRows = csvText.trim().split("\n").map(row => row.split(","));
+  allRows = csvText.trim().split("\n").map(r => r.split(","));
   displayTable(allRows);
 }
 
 function displayTable(rows) {
+  // hide tooltip if visible
   const tooltip = document.getElementById("tooltip-box");
   if (tooltip) tooltip.style.display = "none";
 
@@ -96,45 +125,41 @@ function displayTable(rows) {
   const thead = document.createElement("thead");
   const tbody = document.createElement("tbody");
 
-  const columnNameMap = {
-    "DRUG_ID": "Drug ID",
-    "DRUG_NAME": "Drug Name",
-    "COSMIC_ID": "Cosmic ID",
-    "CCLE_Name": "Cell Line Name",
-    "CCLE_Name": "Cell Line Name",
-    "CANCER_TYPE": "Cancer Type",
-    "Predicted_LN_IC50": "Predicted LN IC50"
+  // human-readable headers
+  const cmap = {
+    DRUG_ID: "Drug ID",
+    DRUG_NAME: "Drug Name",
+    COSMIC_ID: "Cosmic ID",
+    CCLE_Name: "Cell Line Name",
+    CANCER_TYPE: "Cancer Type",
+    Predicted_LN_IC50: "Predicted LN IC50"
   };
-
-  const headerRow = rows[0];
-  const includedIndices = headerRow.map((_, idx) => idx);
 
   rows.forEach((row, i) => {
     const tr = document.createElement("tr");
-    includedIndices.forEach(colIndex => {
-      const cell = row[colIndex];
+    row.forEach((cell, idx) => {
       const tag = i === 0 ? "th" : "td";
-      const td = document.createElement(tag);
-      const header = headerRow[colIndex];
-
+      const td  = document.createElement(tag);
       if (i === 0) {
-        td.innerHTML = (columnNameMap[header] || header) + " ⬍";
+        // header: clickable to sort
+        const raw = row[idx];
+        td.innerHTML = `${cmap[raw]||raw} ⬍`;
         td.style.cursor = "pointer";
-        td.addEventListener("click", () => sortTableByColumn(colIndex));
-      } else if (header === "DRUG_NAME") {
-        const link = document.createElement("a");
-        link.href = `https://en.wikipedia.org/wiki/${encodeURIComponent(cell)}`;
-        link.textContent = cell;
-        link.style.color = "#2c3e50";
-        link.target = "_blank";
-        link.style.textDecoration = "underline";
-        td.appendChild(link);
+        td.addEventListener("click", () => sortTableByColumn(idx));
+      } else if (rows[0][idx] === "DRUG_NAME") {
+        // make drug links to Wikipedia
+        const a = document.createElement("a");
+        a.href        = `https://en.wikipedia.org/wiki/${encodeURIComponent(cell)}`;
+        a.textContent = cell;
+        a.target      = "_blank";
+        a.style.textDecoration = "underline";
+        td.appendChild(a);
       } else {
         td.textContent = cell;
       }
       tr.appendChild(td);
     });
-    i === 0 ? thead.appendChild(tr) : tbody.appendChild(tr);
+    (i === 0 ? thead : tbody).appendChild(tr);
   });
 
   table.appendChild(thead);
@@ -142,170 +167,142 @@ function displayTable(rows) {
   preview.appendChild(table);
 }
 
-function sortTableByColumn(index) {
+// ─── 6. Sorting ────────────────────────────────────────────────────────────────
+
+function sortTableByColumn(colIdx) {
   if (!allRows.length) return;
+  const isNum = !isNaN(allRows[1][colIdx]);
+  sortAscending = (currentSortColumn === colIdx) ? !sortAscending : true;
+  currentSortColumn = colIdx;
 
-  const isNumeric = !isNaN(allRows[1][index]);
-  sortAscending = currentSortColumn === index ? !sortAscending : true;
-  currentSortColumn = index;
-
-  const sorted = [...allRows.slice(1)].sort((a, b) => {
-    const aVal = a[index], bVal = b[index];
-    return isNumeric
-      ? (sortAscending ? aVal - bVal : bVal - aVal)
-      : (sortAscending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal));
+  const sorted = allRows.slice(1).sort((a,b) => {
+    const A = a[colIdx], B = b[colIdx];
+    if (isNum) {
+      return sortAscending ? A - B : B - A;
+    }
+    return sortAscending
+      ? A.localeCompare(B)
+      : B.localeCompare(A);
   });
 
   displayTable([allRows[0], ...sorted]);
 }
 
-function createCancerTypeCheckboxes(dataRows) {
-  const cancerSet = new Set();
-  const cancerDiv = document.getElementById("cancer_filter_checkboxes");
-  const filterControls = document.getElementById("filter_controls");
+// ─── 7. Filtering ─────────────────────────────────────────────────────────────
 
-  const cancerIdx = dataRows[0].indexOf("CANCER_TYPE");
-  if (cancerIdx === -1) return;
+function createCancerTypeCheckboxes(rows) {
+  const cancerIdx = rows[0].indexOf("CANCER_TYPE");
+  if (cancerIdx < 0) return;
 
-  dataRows.slice(1).forEach(row => {
-    const type = row[cancerIdx];
-    if (type) cancerSet.add(type.trim());
-  });
+  const types = new Set(rows.slice(1).map(r => r[cancerIdx].trim()));
+  const container = document.getElementById("cancer_filter_checkboxes");
+  container.innerHTML = Array.from(types).sort().map(type => {
+    const id = `chk_${type.replace(/\s+/g,"_")}`;
+    return `
+      <label>
+        <input type="checkbox" id="${id}" value="${type}" checked
+               onchange="applyCancerFilter()">
+        ${type}
+      </label><br>
+    `;
+  }).join("");
 
-  cancerDiv.innerHTML = "";
-  const checkboxHTML = Array.from(cancerSet).sort().map(type => {
-    const id = `chk_${type.replace(/\s+/g, "_")}`;
-    return `<label><input type="checkbox" value="${type}" id="${id}" checked onchange="applyCancerFilter()"> ${type}</label><br>`;
-  }).join('');
-  
-  cancerDiv.innerHTML = checkboxHTML;
-
-  filterControls.style.display = "block";
-
-  // ✅ Ensure checkboxes exist before calling this
-  setTimeout(applyCancerFilter, 0);
+  document.getElementById("filter_controls").style.display = "block";
+  applyCancerFilter();
 }
-
 
 function applyCancerFilter() {
-  const selected = Array.from(document.querySelectorAll("#cancer_filter_checkboxes input:checked"))
-                        .map(chk => chk.value.trim());
+  const checked = Array.from(
+    document.querySelectorAll("#cancer_filter_checkboxes input:checked")
+  ).map(i => i.value);
 
-  const index = allRows[0].indexOf("CANCER_TYPE");
-  if (index === -1) return;
-
-  const filtered = [allRows[0], ...allRows.slice(1).filter(row => {
-    const type = row[index]?.trim();
-    return selected.includes(type);
-  })];
+  const ci = allRows[0].indexOf("CANCER_TYPE");
+  const filtered = [allRows[0], ...allRows.slice(1)
+    .filter(r => checked.includes(r[ci].trim()))
+  ];
 
   displayTable(filtered);
+  document.getElementById("download_filtered")
+          .style.display = (filtered.length>1 ? "inline-block" : "none");
 
-  const downloadBtn = document.getElementById("download_filtered");
-  downloadBtn.style.display = filtered.length > 1 ? "inline-block" : "none";
-
-  if (selected.length > 0) {
-    displayTopDrugs(filtered);
-  } else {
-    document.getElementById("top_drugs_section").style.display = "none";
-  }
+  if (checked.length) displayTopDrugs(filtered);
+  else document.getElementById("top_drugs_section").style.display = "none";
 }
 
-
+// ─── 8. Download Filtered ────────────────────────────────────────────────────
 
 function downloadFilteredData() {
-  const table = document.querySelector(".styled-table");
-  const rows = table.querySelectorAll("tr");
-
-  const csv = Array.from(rows)
-    .map(row => Array.from(row.cells).map(cell => `"${cell.textContent}"`).join(","))
-    .join("\n");
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `filtered_cancer_data.csv`;
-  link.click();
+  const rows = Array.from(
+    document.querySelectorAll(".styled-table tr")
+  ).map(tr =>
+    Array.from(tr.cells).map(td => `"${td.textContent}"`).join(",")
+  );
+  const blob = new Blob([rows.join("\n")], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href     = URL.createObjectURL(blob);
+  a.download = "filtered_cancer_data.csv";
+  a.click();
 }
 
-function showRequirements() {
-  const tooltip = document.getElementById("tooltip-box");
-  tooltip.style.display = tooltip.style.display === "block" ? "none" : "block";
-}
+// ─── 9. Top-Drugs Charts ──────────────────────────────────────────────────────
 
-function displayTopDrugs(dataRows) {
-  
-  const header = dataRows[0];
-  const rows = dataRows.slice(1);
-  const cancerIdx = header.indexOf("CANCER_TYPE");
-  const drugNameIdx = header.indexOf("DRUG_NAME");
-  const lnIC50Idx = header.indexOf("Predicted_LN_IC50");
+function displayTopDrugs(rows) {
+  const hdr = rows[0];
+  const ci  = hdr.indexOf("CANCER_TYPE");
+  const di  = hdr.indexOf("DRUG_NAME");
+  const li  = hdr.indexOf("Predicted_LN_IC50");
+  if (ci<0||di<0||li<0) return;
 
-  if (cancerIdx === -1 || drugNameIdx === -1 || lnIC50Idx === -1) return;
-
-  const cancerDrugMap = {};
-
-  rows.forEach(row => {
-    const cancerType = row[cancerIdx]?.toUpperCase();
-    const drugName = row[drugNameIdx];
-    const lnIC50 = parseFloat(row[lnIC50Idx]);
-
-    if (!cancerType || isNaN(lnIC50)) return;
-
-    if (!cancerDrugMap[cancerType]) cancerDrugMap[cancerType] = [];
-    cancerDrugMap[cancerType].push({ drugName, lnIC50 });
+  // group & sort
+  const map = {};
+  rows.slice(1).forEach(r => {
+    const c = r[ci].toUpperCase();
+    const ln = parseFloat(r[li]);
+    if (isNaN(ln)) return;
+    if (!map[c]) map[c]=[];
+    map[c].push({drug:r[di], ln});
   });
 
   const container = document.getElementById("top_drugs_container");
   container.innerHTML = "";
-
-  const chartCount = Object.keys(cancerDrugMap).length;
-
-  Object.entries(cancerDrugMap).forEach(([cancerType, drugs], index) => {
-    const sortedDrugs = drugs.sort((a, b) => a.lnIC50 - b.lnIC50).slice(0, 10);
+  const types = Object.keys(map);
+  types.forEach((cancer, idx) => {
+    const top10 = map[cancer]
+      .sort((a,b)=>a.ln-b.ln)
+      .slice(0,10);
 
     const wrapper = document.createElement("div");
-    wrapper.style.display = "inline-block";
-    wrapper.style.verticalAlign = "top";
-    wrapper.style.width = chartCount === 1 ? "96%" : "48%";
-    wrapper.style.margin = "1%";
+    wrapper.style.cssText = `
+      display:inline-block;
+      vertical-align:top;
+      width:${types.length>1?"48%":"96%"};
+      margin:1%;
+    `;
 
     const canvas = document.createElement("canvas");
-    canvas.id = `chart_${cancerType}_${index}`;
+    canvas.id = `chart_${idx}`;
     canvas.height = 250;
     wrapper.appendChild(canvas);
     container.appendChild(wrapper);
 
-    const ctx = canvas.getContext("2d");
-    new Chart(ctx, {
-      type: 'bar',
+    new Chart(canvas.getContext("2d"), {
+      type: "bar",
       data: {
-        labels: sortedDrugs.map(d => d.drugName),
+        labels: top10.map(o=>o.drug),
         datasets: [{
-          label: `Top 10 Sensitive Drugs (${cancerType})`,
-          data: sortedDrugs.map(d => d.lnIC50),
-          backgroundColor: '#5d3b63'
+          label: `Top 10 Sensitive (${cancer})`,
+          data:  top10.map(o=>o.ln),
+          backgroundColor: "#5d3b63"
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          title: {
-            display: true,
-            text: `Cancer Type: ${cancerType}`,
-            font: { size: 18 }
-          }
+          title: { display: true, text: cancer, font:{size:18} }
         },
         scales: {
-          y: {
-            title: {
-              display: true,
-              text: 'Predicted LN IC50 (lower = more sensitive)'
-            }
-          }
+          y: { title: { display:true, text:"Pred LN IC50" } }
         }
       }
     });
@@ -314,19 +311,14 @@ function displayTopDrugs(dataRows) {
   document.getElementById("top_drugs_section").style.display = "block";
 }
 
+// ─── 10. Navigation ───────────────────────────────────────────────────────────
 
 function showSection(section) {
-  const sections = ['intro_section', 'about_section', 'upload-section'];
-  sections.forEach(id => {
+  ["intro_section","about_section","upload-section"].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.style.display = (id.includes(section)) ? 'block' : 'none';
+    el.style.display = (id===section? "block":"none");
   });
-
-  if (section === 'upload') {
-    document.getElementById('filter_controls').style.display = 'none';  // Optional reset
+  if (section==="upload") {
+    document.getElementById("filter_controls").style.display="none";
   }
 }
-
-
-
-
